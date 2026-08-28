@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<PluginConfig>
+    <Field id="showDebugInfo" type="checkbox" defaultValue="false">
+        <Label>Enable Debug Logging:</Label>
+        <Description>Logs each Wall Connector's raw API responses and parsed state in detail.</Description>
+    </Field>
+</PluginConfig>

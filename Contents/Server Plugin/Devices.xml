@@ -1,0 +1,164 @@
+<?xml version="1.0"?>
+<Devices>
+    <Device type="custom" id="wallConnector">
+        <Name>Tesla Wall Connector</Name>
+        <ConfigUI>
+            <Field id="address" type="textfield">
+                <Label>Wall Connector IP Address:</Label>
+                <Description>Local IP or hostname of the Wall Connector (e.g. TeslaWallConnector_ABC123.localdomain). Its local API is unauthenticated and unencrypted - reachable on your LAN only, port 80.</Description>
+            </Field>
+            <Field id="pollInterval" type="menu" defaultValue="30">
+                <Label>Poll Interval:</Label>
+                <Description>The Wall Connector's local API is documented to become unresponsive after prolonged polling, requiring a physical power-cycle to recover - a firmware limitation, not something this plugin can fix. 30 seconds is a reasonable default; faster polling increases that risk.</Description>
+                <List>
+                    <Option value="10">10 seconds (not recommended)</Option>
+                    <Option value="15">15 seconds</Option>
+                    <Option value="30">30 seconds (default)</Option>
+                    <Option value="60">1 minute</Option>
+                    <Option value="300">5 minutes</Option>
+                </List>
+            </Field>
+            <Field id="splitPhase" type="checkbox" defaultValue="false">
+                <Label>North American split-phase supply:</Label>
+                <Description>Check only if this installation is on North American split-phase wiring (120/240V, two hot legs). Leave unchecked for a single 230V phase or a 3-phase supply (e.g. Australia/UK/EU) - the power calculation differs between the two.</Description>
+            </Field>
+        </ConfigUI>
+        <States>
+            <State id="vehicleConnected">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Vehicle Connected Changed</TriggerLabel>
+                <ControlPageLabel>Vehicle Connected</ControlPageLabel>
+            </State>
+            <State id="charging">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Charging Changed</TriggerLabel>
+                <ControlPageLabel>Charging</ControlPageLabel>
+            </State>
+            <State id="contactorClosed">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Contactor Closed Changed</TriggerLabel>
+                <ControlPageLabel>Contactor Closed</ControlPageLabel>
+            </State>
+            <State id="power">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>Power Changed</TriggerLabel>
+                <ControlPageLabel>Power</ControlPageLabel>
+                <Units>W</Units>
+            </State>
+            <State id="vehicleCurrent">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Vehicle Current Changed</TriggerLabel>
+                <ControlPageLabel>Vehicle Current</ControlPageLabel>
+                <Units>A</Units>
+            </State>
+            <State id="gridVoltage">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Grid Voltage Changed</TriggerLabel>
+                <ControlPageLabel>Grid Voltage</ControlPageLabel>
+                <Units>V</Units>
+            </State>
+            <State id="gridFrequency">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Grid Frequency Changed</TriggerLabel>
+                <ControlPageLabel>Grid Frequency</ControlPageLabel>
+                <Units>Hz</Units>
+            </State>
+            <State id="sessionEnergy">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Session Energy Changed</TriggerLabel>
+                <ControlPageLabel>Session Energy</ControlPageLabel>
+                <Units>kWh</Units>
+            </State>
+            <State id="sessionTime">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Session Time Changed</TriggerLabel>
+                <ControlPageLabel>Session Time</ControlPageLabel>
+            </State>
+            <State id="handleTemp">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Handle Temperature Changed</TriggerLabel>
+                <ControlPageLabel>Handle Temperature</ControlPageLabel>
+                <Units>°C</Units>
+            </State>
+            <State id="pcbaTemp">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>PCBA Temperature Changed</TriggerLabel>
+                <ControlPageLabel>PCBA Temperature</ControlPageLabel>
+                <Units>°C</Units>
+            </State>
+            <State id="mcuTemp">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>MCU Temperature Changed</TriggerLabel>
+                <ControlPageLabel>MCU Temperature</ControlPageLabel>
+                <Units>°C</Units>
+            </State>
+            <State id="currentAlerts">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Current Alerts Changed</TriggerLabel>
+                <ControlPageLabel>Current Alerts</ControlPageLabel>
+            </State>
+            <State id="notReadyReasons">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Not-Ready Reasons Changed</TriggerLabel>
+                <ControlPageLabel>Not-Ready Reasons</ControlPageLabel>
+            </State>
+            <State id="evseState">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>EVSE State Code Changed</TriggerLabel>
+                <ControlPageLabel>EVSE State Code</ControlPageLabel>
+            </State>
+            <State id="lifetimeEnergy">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Lifetime Energy Changed</TriggerLabel>
+                <ControlPageLabel>Lifetime Energy</ControlPageLabel>
+                <Units>kWh</Units>
+            </State>
+            <State id="chargeStarts">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>Charge Starts Changed</TriggerLabel>
+                <ControlPageLabel>Charge Starts</ControlPageLabel>
+            </State>
+            <State id="contactorCycles">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>Contactor Cycles Changed</TriggerLabel>
+                <ControlPageLabel>Contactor Cycles</ControlPageLabel>
+            </State>
+            <State id="alertCount">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>Alert Count Changed</TriggerLabel>
+                <ControlPageLabel>Alert Count</ControlPageLabel>
+            </State>
+            <State id="uptime">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Uptime Changed</TriggerLabel>
+                <ControlPageLabel>Uptime</ControlPageLabel>
+            </State>
+            <State id="wifiConnected">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Wifi Connected Changed</TriggerLabel>
+                <ControlPageLabel>Wifi Connected</ControlPageLabel>
+            </State>
+            <State id="internetConnected">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Internet Connected Changed</TriggerLabel>
+                <ControlPageLabel>Internet Connected</ControlPageLabel>
+            </State>
+            <State id="wifiSignalStrength">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>Wifi Signal Strength Changed</TriggerLabel>
+                <ControlPageLabel>Wifi Signal Strength</ControlPageLabel>
+            </State>
+            <State id="firmwareVersion">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Firmware Version Changed</TriggerLabel>
+                <ControlPageLabel>Firmware Version</ControlPageLabel>
+            </State>
+            <State id="serialNumber">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Serial Number Changed</TriggerLabel>
+                <ControlPageLabel>Serial Number</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>power</UiDisplayStateId>
+    </Device>
+</Devices>
