@@ -47,6 +47,322 @@ DEFAULT_POLL_INTERVAL = 30
 SLOW_POLL_INTERVAL = 300      # seconds (5 min) - lifetime/wifi_status
 VERSION_POLL_INTERVAL = 3600  # seconds (1 hour) - version/firmware
 
+# Every state the wallConnector device carries, in display order - handed to
+# the dashboard page as one flat object per device (this plugin has no child
+# device types, unlike AlphaESS Modbus's Inverter/Solar/Battery/Grid split).
+DASHBOARD_STATE_KEYS = [
+    "vehicleConnected", "charging", "contactorClosed", "power", "vehicleCurrent",
+    "gridVoltage", "gridFrequency", "sessionEnergy", "sessionTime",
+    "handleTemp", "pcbaTemp", "mcuTemp", "currentAlerts", "notReadyReasons", "evseState",
+    "lifetimeEnergy", "chargeStarts", "contactorCycles", "alertCount", "uptime",
+    "wifiConnected", "internetConnected", "wifiSignalStrength",
+    "firmwareVersion", "serialNumber",
+]
+
+# Self-contained dashboard page - inline CSS/JS, no CDN dependency, dark-mode
+# aware via prefers-color-scheme. Served by the `dashboard` action below;
+# polls `dashboard_data` client-side every 5s. Layout/CSS tokens/JS
+# conventions (tile/detail-card grid, .dot categorical indicators, banner for
+# errors, textContent-only rendering) match this user's AlphaESS Modbus
+# plugin's dashboard for visual consistency across their Indigo plugins -
+# simplified here since there's only one device type/no children to fan out
+# to. Status colors (green=charging, blue=connected-not-charging, muted=not
+# connected) are a state indicator, not a categorical identity channel, so
+# reusing hues from the AlphaESS palette here doesn't create the "two
+# different things share a color" confusion that palette was designed to
+# avoid - these two dashboards are never viewed side by side.
+DASHBOARD_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tesla Wall Connector</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page-plane: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --border: rgba(11,11,11,0.10);
+    --status-charging: #1baf7a;
+    --status-connected: #2a78d6;
+    --status-critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page-plane: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --border: rgba(255,255,255,0.10);
+      --status-charging: #199e70;
+      --status-connected: #3987e5;
+      --status-critical: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px 16px 48px;
+  }
+  .page { max-width: 880px; margin: 0 auto; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  .meta { color: var(--text-muted); font-size: 13px; }
+  .headerMeta { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+  select {
+    font: inherit; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  }
+  .banner {
+    display: none; align-items: center; gap: 8px; margin-bottom: 16px;
+    padding: 10px 14px; border-radius: 10px; font-size: 14px;
+    color: var(--status-critical); border: 1px solid var(--status-critical);
+    background: color-mix(in srgb, var(--status-critical) 10%, transparent);
+  }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .tile {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px;
+  }
+  .tile-label { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; margin-bottom: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot-charging { background: var(--status-charging); }
+  .dot-connected { background: var(--status-connected); }
+  .dot-idle { background: var(--text-muted); }
+  .value { font-size: 28px; font-weight: 600; line-height: 1.1; }
+  .sub { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+  .details {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px; margin-top: 12px;
+  }
+  .detail-card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px;
+  }
+  .detail-card h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; }
+  .rows { display: flex; flex-direction: column; }
+  .row {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 7px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .row:last-child { border-bottom: none; }
+  .row-label { color: var(--text-secondary); }
+  .row-value { font-weight: 500; text-align: right; }
+  .empty-note { color: var(--text-muted); font-size: 13px; }
+  footer { margin-top: 24px; color: var(--text-muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1 id="deviceName">Tesla Wall Connector</h1>
+      <div class="headerMeta" id="wcMeta"></div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <select id="deviceSelect" style="display:none;"></select>
+      <span class="meta" id="lastUpdated">-</span>
+    </div>
+  </header>
+
+  <div class="banner" id="banner">&#9888; <span id="bannerText"></span></div>
+
+  <div class="grid">
+    <div class="tile">
+      <div class="tile-label"><span class="dot" id="statusDot"></span>Status</div>
+      <div class="value" id="statusValue">-</div>
+      <div class="sub" id="statusSub">-</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Power</div>
+      <div class="value" id="powerValue">-</div>
+      <div class="sub" id="currentSub">-</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Session Energy</div>
+      <div class="value" id="sessionEnergyValue">-</div>
+      <div class="sub" id="sessionTimeSub">-</div>
+    </div>
+  </div>
+
+  <div class="details">
+    <div class="detail-card">
+      <h2>Charging</h2>
+      <div class="rows" id="chargingDetail"></div>
+    </div>
+    <div class="detail-card">
+      <h2>Wall Connector</h2>
+      <div class="rows" id="deviceDetail"></div>
+    </div>
+    <div class="detail-card">
+      <h2>Lifetime &amp; connectivity</h2>
+      <div class="rows" id="lifetimeDetail"></div>
+    </div>
+  </div>
+
+  <footer>Auto-refreshes every 5 seconds.</footer>
+</div>
+<script>
+(function () {
+  var POLL_MS = 5000;
+  var selectedDeviceId = null;
+  var deviceSelect = document.getElementById("deviceSelect");
+
+  function fmt(value, decimals, unit) {
+    if (value === null || value === undefined || value === "") return "-";
+    return Number(value).toFixed(decimals) + (unit ? " " + unit : "");
+  }
+
+  function formatPower(watts) {
+    if (watts === null || watts === undefined) return "-";
+    var abs = Math.abs(watts);
+    if (abs < 1000) return Math.round(watts) + " W";
+    return (watts / 1000).toFixed(2) + " kW";
+  }
+
+  function row(label, valueText) {
+    var r = document.createElement("div");
+    r.className = "row";
+    var l = document.createElement("span");
+    l.className = "row-label";
+    l.textContent = label;
+    var v = document.createElement("span");
+    v.className = "row-value";
+    v.textContent = valueText;
+    r.appendChild(l);
+    r.appendChild(v);
+    return r;
+  }
+
+  function setBanner(message) {
+    var banner = document.getElementById("banner");
+    if (message) {
+      document.getElementById("bannerText").textContent = message;
+      banner.style.display = "flex";
+    } else {
+      banner.style.display = "none";
+    }
+  }
+
+  function render(data) {
+    document.getElementById("deviceName").textContent = data.deviceName || "Tesla Wall Connector";
+    document.getElementById("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString();
+
+    var s = data.states || {};
+    var metaParts = [];
+    if (s.firmwareVersion) metaParts.push("Firmware " + s.firmwareVersion);
+    if (s.serialNumber) metaParts.push(s.serialNumber);
+    if (s.uptime) metaParts.push("Up " + s.uptime);
+    document.getElementById("wcMeta").textContent = metaParts.join(" · ");
+
+    var statusDot = document.getElementById("statusDot");
+    var statusValue = document.getElementById("statusValue");
+    var statusSub = document.getElementById("statusSub");
+    if (s.charging) {
+      statusDot.className = "dot dot-charging";
+      statusValue.textContent = "Charging";
+    } else if (s.vehicleConnected) {
+      statusDot.className = "dot dot-connected";
+      statusValue.textContent = "Connected";
+    } else {
+      statusDot.className = "dot dot-idle";
+      statusValue.textContent = "Not Connected";
+    }
+    statusSub.textContent = (s.currentAlerts && s.currentAlerts !== "None") ? ("⚠ " + s.currentAlerts) : "No active alerts";
+
+    document.getElementById("powerValue").textContent = formatPower(s.power);
+    document.getElementById("currentSub").textContent = s.vehicleCurrent !== undefined ? fmt(s.vehicleCurrent, 1, "A") : "-";
+
+    document.getElementById("sessionEnergyValue").textContent = s.sessionEnergy !== undefined ? fmt(s.sessionEnergy, 2, "kWh") : "-";
+    document.getElementById("sessionTimeSub").textContent = s.sessionTime ? ("Session " + s.sessionTime) : "-";
+
+    var chargingDetail = document.getElementById("chargingDetail");
+    chargingDetail.replaceChildren();
+    chargingDetail.appendChild(row("Contactor", s.contactorClosed ? "Closed" : "Open"));
+    chargingDetail.appendChild(row("Grid voltage", fmt(s.gridVoltage, 1, "V")));
+    chargingDetail.appendChild(row("Grid frequency", fmt(s.gridFrequency, 2, "Hz")));
+    chargingDetail.appendChild(row("Alerts", s.currentAlerts || "-"));
+    chargingDetail.appendChild(row("Not-ready reasons", s.notReadyReasons || "-"));
+
+    var deviceDetail = document.getElementById("deviceDetail");
+    deviceDetail.replaceChildren();
+    deviceDetail.appendChild(row("Handle temp", fmt(s.handleTemp, 1, "°C")));
+    deviceDetail.appendChild(row("PCBA temp", fmt(s.pcbaTemp, 1, "°C")));
+    deviceDetail.appendChild(row("MCU temp", fmt(s.mcuTemp, 1, "°C")));
+    deviceDetail.appendChild(row("EVSE state code", s.evseState !== undefined ? String(s.evseState) : "-"));
+    deviceDetail.appendChild(row("Firmware", s.firmwareVersion || "-"));
+    deviceDetail.appendChild(row("Serial number", s.serialNumber || "-"));
+
+    var lifetimeDetail = document.getElementById("lifetimeDetail");
+    lifetimeDetail.replaceChildren();
+    lifetimeDetail.appendChild(row("Lifetime energy", fmt(s.lifetimeEnergy, 2, "kWh")));
+    lifetimeDetail.appendChild(row("Charge starts", s.chargeStarts !== undefined ? String(s.chargeStarts) : "-"));
+    lifetimeDetail.appendChild(row("Contactor cycles", s.contactorCycles !== undefined ? String(s.contactorCycles) : "-"));
+    lifetimeDetail.appendChild(row("Alert count", s.alertCount !== undefined ? String(s.alertCount) : "-"));
+    lifetimeDetail.appendChild(row("Uptime", s.uptime || "-"));
+    lifetimeDetail.appendChild(row("Wifi", s.wifiConnected ? ("Connected · " + fmt(s.wifiSignalStrength, 0, "")) : "Not connected"));
+    lifetimeDetail.appendChild(row("Internet", s.internetConnected ? "Connected" : "Not connected"));
+
+    if (data.errorState) {
+      setBanner("Device reporting an error: " + data.errorState);
+    } else {
+      setBanner(null);
+    }
+
+    if (data.devices && data.devices.length > 1) {
+      deviceSelect.style.display = "inline-block";
+      if (deviceSelect.options.length !== data.devices.length) {
+        deviceSelect.innerHTML = "";
+        data.devices.forEach(function (d) {
+          var opt = document.createElement("option");
+          opt.value = d.id;
+          opt.textContent = d.name;
+          deviceSelect.appendChild(opt);
+        });
+      }
+      deviceSelect.value = data.deviceId;
+    }
+    selectedDeviceId = data.deviceId;
+  }
+
+  function poll() {
+    var url = "dashboard_data" + (selectedDeviceId ? ("?deviceId=" + selectedDeviceId) : "");
+    fetch(url).then(function (res) { return res.json(); }).then(function (data) {
+      if (!data.ok) {
+        setBanner(data.error || "No Tesla Wall Connector device found");
+        return;
+      }
+      render(data);
+    }).catch(function () {
+      setBanner("Could not reach the Tesla Wall Connector plugin");
+    });
+  }
+
+  deviceSelect.addEventListener("change", function () {
+    selectedDeviceId = deviceSelect.value;
+    poll();
+  });
+
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+</body>
+</html>
+"""
+
 
 class Plugin(indigo.PluginBase):
     def __init__(self, pluginId: str, pluginDisplayName: str, pluginVersion: str, pluginPrefs: indigo.Dict) -> None:
@@ -395,3 +711,104 @@ class Plugin(indigo.PluginBase):
         except (KeyError, TypeError) as e:
             self.logger.warning(f"Unexpected version response shape from {dev.name} at {address}: {e}")
             return []
+
+    # ------------------------------------------------------------------
+    # Dashboard (HTTP responder)
+    # ------------------------------------------------------------------
+
+    # NOTE: dashboard/dashboard_data are reachable via Indigo's HTTP
+    # responder (registered in Actions.xml with uiPath="hidden") at
+    # http://<host>:8176/message/com.coolcaper.teslawallconnector/<id>.
+    # Their signatures MUST stay untyped (no type hints, no return
+    # annotation) - Indigo's HTTP-dispatch bridge fails on this specific
+    # path with an opaque "RuntimeError: unable to convert python exception"
+    # raised before the method body ever runs if the signature carries type
+    # hints. Discovered and documented the hard way on this user's AlphaESS
+    # Modbus plugin; every device-scoped Actions.xml callback elsewhere in
+    # this codebase keeps its type hints fine, so it's specific to this
+    # no-device HTTP-dispatch path.
+
+    def dashboard(self, action, dev=None, caller_waiting_for_result=None):
+        """Serve the live Tesla Wall Connector dashboard page.
+
+        Reachable at ``http://<this-mac's-ip>:8176/message/<pluginId>/dashboard``
+        via Indigo's built-in plugin HTTP responder. The page itself is static;
+        it polls ``dashboard_data`` client-side for live values.
+
+        Args:
+            action (indigo.Dict): The inbound HTTP request wrapper Indigo provides.
+            dev: Unused - required by Indigo's HTTP responder calling convention.
+            caller_waiting_for_result: Unused - required by Indigo's HTTP responder calling convention.
+
+        Returns:
+            indigo.Dict: An HTTP reply dict (status/content/headers).
+        """
+        try:
+            reply = indigo.Dict()
+            reply["status"] = 200
+            reply["content"] = DASHBOARD_HTML
+            reply["headers"] = {"Content-Type": "text/html; charset=utf-8"}
+            return reply
+        except Exception:
+            # Indigo's own exception-marshalling can itself fail ("unable to
+            # convert python exception"), hiding the real cause - log it here
+            # ourselves rather than relying on that bridge.
+            self.logger.exception("Error serving dashboard")
+            reply = indigo.Dict()
+            reply["status"] = 500
+            reply["content"] = "Internal error - see plugin log"
+            reply["headers"] = {"Content-Type": "text/plain"}
+            return reply
+
+    def dashboard_data(self, action, dev=None, caller_waiting_for_result=None):
+        """Serve the current Wall Connector states as JSON, for the dashboard page to poll.
+
+        Args:
+            action (indigo.Dict): The inbound HTTP request wrapper Indigo provides;
+                its ``props["url_query_args"]`` may contain a ``deviceId`` to pick
+                a specific Wall Connector when more than one is configured.
+            dev: Unused - required by Indigo's HTTP responder calling convention.
+            caller_waiting_for_result: Unused - required by Indigo's HTTP responder calling convention.
+
+        Returns:
+            indigo.Dict: An HTTP reply dict wrapping a JSON body.
+        """
+        try:
+            props = dict(action.props) if action is not None else {}
+            query = props.get("url_query_args", {}) or {}
+            requested_id = query.get("deviceId")
+
+            devices = list(indigo.devices.iter("self.wallConnector"))
+            device_list = [{"id": d.id, "name": d.name} for d in devices]
+
+            target = None
+            if requested_id:
+                target = next((d for d in devices if str(d.id) == str(requested_id)), None)
+            if target is None:
+                target = next((d for d in devices if d.enabled and d.configured), None)
+
+            reply = indigo.Dict()
+            reply["status"] = 200
+            reply["headers"] = {"Content-Type": "application/json"}
+
+            if target is None:
+                reply["content"] = json.dumps({"ok": False, "error": "No configured Tesla Wall Connector device found", "devices": device_list})
+                return reply
+
+            payload = {
+                "ok": True,
+                "deviceId": target.id,
+                "deviceName": target.name,
+                "devices": device_list,
+                "errorState": target.errorState or None,
+                "states": {k: target.states.get(k) for k in DASHBOARD_STATE_KEYS},
+            }
+            reply["content"] = json.dumps(payload)
+            return reply
+        except Exception:
+            self.logger.exception("Error serving dashboard_data")
+            reply = indigo.Dict()
+            reply["status"] = 500
+            reply["content"] = json.dumps({"ok": False, "error": "Internal error - see plugin log"})
+            reply["headers"] = {"Content-Type": "application/json"}
+            return reply

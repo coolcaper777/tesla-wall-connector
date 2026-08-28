@@ -45,6 +45,16 @@ An [Indigo Domotics](https://www.indigodomo.com/) plugin for monitoring a 3rd-ge
 
 `lifetime`/`wifi_status`/`version` are polled far less often than the live telemetry (every 5 minutes and every hour respectively, regardless of the configured Poll Interval) - see Architecture for why.
 
+## Live dashboard
+
+A live web dashboard is served directly by the plugin at:
+
+```
+http://<your-indigo-host>:8176/message/com.coolcaper.teslawallconnector/dashboard
+```
+
+Shows current status (Charging/Connected/Not Connected), power, session energy/time, grid voltage/frequency, temperatures, alerts, and lifetime/connectivity stats - self-refreshes every 5 seconds, no login required (same LAN-only trust model as the Wall Connector's own local API). If you have more than one Wall Connector device configured, a picker lets you switch between them.
+
 ## Credits
 
 Endpoint/field shapes cross-checked against [einarhauks/tesla-wall-connector](https://github.com/einarhauks/tesla-wall-connector) (MIT-licensed, actively maintained, used to back Home Assistant's own integration).
