@@ -623,7 +623,7 @@ class Plugin(indigo.PluginBase):
                 {"key": "handleTemp", "value": vitals["handle_temp_c"], "decimalPlaces": 1},
                 {"key": "pcbaTemp", "value": vitals["pcba_temp_c"], "decimalPlaces": 1},
                 {"key": "mcuTemp", "value": vitals["mcu_temp_c"], "decimalPlaces": 1},
-                {"key": "currentAlerts", "value": ", ".join(alerts) if alerts else "None"},
+                {"key": "currentAlerts", "value": ", ".join(str(a) for a in alerts) if alerts else "None"},
                 {"key": "notReadyReasons", "value": ", ".join(str(r) for r in not_ready) if not_ready else "None"},
                 # evse_state's numeric meaning isn't documented anywhere
                 # (Tesla, the reference library, and community threads all
